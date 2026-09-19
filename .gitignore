@@ -1,0 +1,12 @@
+# Secrets
+*firebase-adminsdk*.json
+.env
+.env.*
+!.env.example
+
+# Supabase
+supabase/.temp/
+supabase/.branches/
+
+# Node
+node_modules/
