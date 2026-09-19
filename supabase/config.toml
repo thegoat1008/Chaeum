@@ -1,0 +1,35 @@
+project_id = "chaeum"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = []
+jwt_expiry = 3600
+enable_signup = true
+
+[functions.push-token]
+verify_jwt = true
+
+[functions.cancel-trigger]
+verify_jwt = true
+
+[functions.agent-event]
+verify_jwt = true
+
+[functions.dispatch-scheduled-triggers]
+verify_jwt = false
