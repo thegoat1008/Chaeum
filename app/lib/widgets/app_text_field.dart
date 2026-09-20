@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 
-/// 얇은 테두리 입력창. label을 주면 위에 작은 제목이 붙습니다.
 class AppTextField extends StatelessWidget {
   final String? label;
   final String hint;
@@ -28,29 +27,31 @@ class AppTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final field = TextField(
-      controller: controller,
-      obscureText: obscureText,
-      autofocus: autofocus,
-      readOnly: readOnly,
-      textInputAction: textInputAction,
-      onSubmitted: onSubmitted,
-      onChanged: onChanged,
-      style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(fontSize: 12, color: AppColors.textHint),
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(4),
-          borderSide: const BorderSide(color: AppColors.border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(4),
-          borderSide: const BorderSide(color: AppColors.primary),
+    final field = SizedBox(
+      height: 54,
+      child: TextField(
+        controller: controller,
+        obscureText: obscureText,
+        autofocus: autofocus,
+        readOnly: readOnly,
+        textInputAction: textInputAction,
+        onSubmitted: onSubmitted,
+        onChanged: onChanged,
+        style: const TextStyle(fontSize: 17, color: AppColors.textPrimary),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(fontSize: 17, color: AppColors.textHint),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: AppColors.border),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: AppColors.primary, width: 1.4),
+          ),
         ),
       ),
     );
@@ -59,12 +60,8 @@ class AppTextField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label!,
-            style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary)),
-        const SizedBox(height: 8),
+        Text(label!, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 12),
         field,
       ],
     );

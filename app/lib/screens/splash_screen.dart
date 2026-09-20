@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import '../theme/app_colors.dart';
 import 'login_screen.dart';
 
-/// Figma: iPhone 16 - 1
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -15,41 +13,40 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     Future.delayed(const Duration(milliseconds: 1500), () {
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
+      if (mounted) {
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LoginScreen()));
+      }
     });
   }
 
   @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(child: ChaeumLogo(size: 40, showTagline: true)),
-    );
-  }
+  Widget build(BuildContext context) => const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(child: SizedBox(width: 393, height: 852, child: Center(child: ChaeumLogo()))),
+      );
 }
 
-/// 임시 텍스트 로고. Figma에서 로고 PNG를 받으면 Image.asset으로 교체.
 class ChaeumLogo extends StatelessWidget {
   final double size;
   final bool showTagline;
-  const ChaeumLogo({super.key, required this.size, this.showTagline = false});
+
+  const ChaeumLogo({super.key, this.size = 50, this.showTagline = true});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text('채움',
-            style: TextStyle(
-                fontSize: size,
-                fontWeight: FontWeight.w900,
-                color: AppColors.primary)),
-        if (showTagline)
-          const Text('나를 채우는 즐거움',
-              style: TextStyle(fontSize: 8, color: AppColors.textPrimary)),
-      ],
+    if (showTagline) {
+      return Image.asset(
+        'assets/images/chaeum_logo.png',
+        width: size == 50 ? 95 : size * 1.9,
+        height: size == 50 ? 68 : size * 1.36,
+        fit: BoxFit.contain,
+      );
+    }
+    return Image.asset(
+      'assets/images/chaeum_logo_small.png',
+      width: size * 1.9,
+      height: size,
+      fit: BoxFit.contain,
     );
   }
 }
