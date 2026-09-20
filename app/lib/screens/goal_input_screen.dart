@@ -3,6 +3,7 @@ import '../models/goal.dart';
 import '../theme/app_colors.dart';
 import '../widgets/aquarium_background.dart';
 import '../widgets/primary_button.dart';
+import '../widgets/ime_text_field.dart';
 import 'goal_confirm_screen.dart';
 
 class GoalInputScreen extends StatefulWidget {
@@ -102,7 +103,7 @@ class _GoalInputScreenState extends State<GoalInputScreen> {
       const SizedBox(height: 12),
       SizedBox(
         height: 54,
-        child: TextField(
+        child: ImeTextField(
           controller: controller,
           autofocus: true,
           textInputAction: action,

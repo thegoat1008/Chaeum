@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import 'ime_text_field.dart';
 
 class AppTextField extends StatelessWidget {
   final String? label;
@@ -29,7 +30,7 @@ class AppTextField extends StatelessWidget {
   Widget build(BuildContext context) {
     final field = SizedBox(
       height: 54,
-      child: TextField(
+      child: ImeTextField(
         controller: controller,
         obscureText: obscureText,
         autofocus: autofocus,
