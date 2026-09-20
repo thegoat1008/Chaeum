@@ -31,5 +31,8 @@ verify_jwt = true
 [functions.agent-event]
 verify_jwt = true
 
+[functions.generate-mission]
+verify_jwt = true
+
 [functions.dispatch-scheduled-triggers]
 verify_jwt = false

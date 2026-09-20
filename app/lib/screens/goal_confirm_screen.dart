@@ -18,8 +18,10 @@ class GoalConfirmScreen extends StatefulWidget {
 enum _Status { loading, success, error }
 
 class _GoalConfirmScreenState extends State<GoalConfirmScreen> {
-  final GoalRepository _repo = MockGoalRepository();
+  final GoalRepository _repo = GoalRepository.configured();
   _Status _status = _Status.loading;
+  GeneratedGoal? _goal;
+  String? _error;
 
   @override
   void initState() {
@@ -30,10 +32,10 @@ class _GoalConfirmScreenState extends State<GoalConfirmScreen> {
   Future<void> _load() async {
     setState(() => _status = _Status.loading);
     try {
-      await _repo.generateGoal(widget.draft);
-      if (mounted) setState(() => _status = _Status.success);
-    } catch (_) {
-      if (mounted) setState(() => _status = _Status.error);
+      final goal = await _repo.generateGoal(widget.draft);
+      if (mounted) setState(() { _goal = goal; _status = _Status.success; });
+    } catch (error) {
+      if (mounted) setState(() { _error = error.toString(); _status = _Status.error; });
     }
   }
 
@@ -61,7 +63,11 @@ class _GoalConfirmScreenState extends State<GoalConfirmScreen> {
       );
     }
     if (_status == _Status.error) {
-      return Center(child: SizedBox(width: 200, child: PrimaryButton(label: '다시 시도', onPressed: _load)));
+      return Center(child: SizedBox(width: 260, child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(_error ?? '목표를 만들지 못했어요.', textAlign: TextAlign.center),
+        const SizedBox(height: 16),
+        PrimaryButton(label: '다시 시도', onPressed: _load),
+      ])));
     }
     return Center(
       child: ConstrainedBox(
@@ -75,9 +81,13 @@ class _GoalConfirmScreenState extends State<GoalConfirmScreen> {
             const SizedBox(height: 24),
             const Divider(color: AppColors.border),
             const SizedBox(height: 18),
-            const _GoalStep(step: 'STEP 1', title: '제출 일주일 전 시작', description: '마감 일주일 전에 시작하도록 알려드려요'),
+            Text(_goal!.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Text(_goal!.description, style: const TextStyle(fontSize: 14, height: 1.4, color: AppColors.textGrey)),
+            const SizedBox(height: 22),
+            _GoalStep(step: 'STEP 1', title: _goal!.steps.first.title, description: _goal!.steps.first.description),
             const SizedBox(height: 16),
-            const _GoalStep(step: 'STEP 2', title: '매일 오후 6시 알림', description: '매일 오후 6시에 알려드려요'),
+            _GoalStep(step: 'STEP 2', title: _goal!.steps.length > 1 ? _goal!.steps[1].title : '매일 기록하기', description: _goal!.steps.length > 1 ? _goal!.steps[1].description : '진행 상황을 짧게 기록해요.'),
             const SizedBox(height: 50),
             PrimaryButton(
               label: '목표 생성하기',
