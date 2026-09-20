@@ -1,226 +1,228 @@
 import 'package:flutter/material.dart';
+
+import '../models/mission.dart';
+import '../state/session.dart';
 import '../theme/app_colors.dart';
-import '../widgets/aquarium_background.dart';
+import '../widgets/loading_view.dart';
+import '../widgets/mission_header.dart';
 import '../widgets/primary_button.dart';
+import 'mission_flow_screen.dart';
+import 'splash_screen.dart' show ChaeumLogo;
 
-enum MissionStage { overview, writing, feedback, complete }
-
+/// 미션 탭. 오늘의 미션 개요를 보여 주고, 시작하면 풀스크린 수행 흐름으로 넘깁니다.
 class MissionScreen extends StatefulWidget {
-  final String userName;
-  const MissionScreen({super.key, required this.userName});
+  const MissionScreen({super.key});
 
   @override
   State<MissionScreen> createState() => _MissionScreenState();
 }
 
 class _MissionScreenState extends State<MissionScreen> {
-  final _answerController = TextEditingController();
-  MissionStage _stage = MissionStage.overview;
-  String? _difficulty;
-
   @override
-  void dispose() {
-    _answerController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    // 탭이 처음 만들어질 때 오늘의 미션을 준비합니다.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) SessionScope.of(context).ensureMission();
+    });
+  }
+
+  Future<void> _start() async {
+    final session = SessionScope.of(context);
+    session.startWriting();
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => MissionFlowScreen(session: session)),
+    );
+    // 흐름을 끝내고 돌아오면 다음 미션을 준비합니다.
+    if (!mounted) return;
+    if (session.stage == MissionStage.complete) await session.startNextMission();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_stage == MissionStage.complete) return _completeView();
+    final session = SessionScope.of(context);
+    final mission = session.mission;
+
+    if (session.paused) {
+      return const _CenteredNotice(
+        icon: Icons.pause_circle_outline,
+        message: '목표를 일시정지했어요.\n프로필 탭에서 다시 시작할 수 있어요.',
+      );
+    }
+    if (session.stage == MissionStage.error) {
+      return AquariumErrorView(
+        message: session.error ?? '미션을 만들지 못했어요.',
+        isSafetyBlock: session.errorIsSafetyBlock,
+        onRetry: session.loadMission,
+      );
+    }
+    if (mission == null) {
+      return const AquariumLoadingView(message: '오늘의 미션을 만들고 있어요');
+    }
+
     return Center(
-      child: SizedBox(
-        width: 393,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 393),
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(40, 18, 40, 34),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _pageHeader(_stage == MissionStage.feedback ? '미션 통계' : '오늘의 미션'),
-            const SizedBox(height: 30),
-            const Text('DAY 18', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w600, color: AppColors.primary)),
-            const SizedBox(height: 2),
-            const Row(children: [
-              Expanded(child: Text('프로젝트 브레인스토밍하기', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500))),
-              Text('🦀', style: TextStyle(fontSize: 34)),
-            ]),
-            const SizedBox(height: 18),
-            const Divider(color: AppColors.border),
-            const SizedBox(height: 20),
-            if (_stage == MissionStage.overview) _overview(),
-            if (_stage == MissionStage.writing) _writing(),
-            if (_stage == MissionStage.feedback) _feedback(),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  Widget _pageHeader(String title) => Row(children: [
-        const Icon(Icons.chevron_left, size: 30),
-        const Spacer(),
-        Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500)),
-        const Spacer(),
-        const SizedBox(width: 30),
-      ]);
-
-  Widget _overview() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const _SectionTitle('목표'),
-        const SizedBox(height: 10),
-        const Text.rich(
-          TextSpan(children: [
-            TextSpan(text: '프로젝트의 방향을 정하기 위해 '),
-            TextSpan(text: '떠오르는 아이디어', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w500)),
-            TextSpan(text: '를 자유롭게 정리해보세요'),
-          ]),
-          style: TextStyle(fontSize: 16, height: 1.4),
-        ),
-        const SizedBox(height: 34),
-        _conditions(),
-        const SizedBox(height: 34),
-        const _SectionTitle('Hint!'),
-        const SizedBox(height: 4),
-        const Text('미션이 어렵다면 이 글을 확인해주세요', style: TextStyle(fontSize: 14, color: AppColors.textGrey)),
-        const SizedBox(height: 12),
-        const _HintStep('STEP 1', '떠오르는 아이디어를 자유롭게 적어보세요', '→ 완벽한 아이디어가 아니어도 괜찮아요'),
-        const _HintStep('STEP 2', '각 아이디어가 어떤 문제를 해결하는지\n한 줄로 적어보세요', null),
-        const _HintStep('STEP 3', '가장 관심이 가는 아이디어 하나를 골라보세요', null),
-        const SizedBox(height: 20),
-        PrimaryButton(label: '시작하기', onPressed: () => setState(() => _stage = MissionStage.writing)),
-        const SizedBox(height: 10),
-        const Center(child: Text('미션 건너뛰기   |   미션 다시 생성하기', style: TextStyle(fontSize: 13, color: AppColors.textGrey))),
-      ]);
-
-  Widget _writing() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _conditions(),
-        const SizedBox(height: 30),
-        TextField(
-          controller: _answerController,
-          minLines: 10,
-          maxLines: 14,
-          onChanged: (_) => setState(() {}),
-          decoration: InputDecoration(
-            hintText: '완료한 과제 내용을 작성해주세요',
-            hintStyle: const TextStyle(fontSize: 16, color: AppColors.textGrey),
-            contentPadding: const EdgeInsets.all(20),
-            filled: true,
-            fillColor: Colors.white,
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.primary)),
-          ),
-        ),
-        const SizedBox(height: 30),
-        PrimaryButton(
-          label: '제출하기',
-          onPressed: _answerController.text.trim().isEmpty ? null : () => setState(() => _stage = MissionStage.feedback),
-        ),
-      ]);
-
-  Widget _feedback() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const _SectionTitle('오늘 미션 난이도는 어땠나요?'),
-        const SizedBox(height: 8),
-        const Text('추후 미션 난이도 조정에 반영돼요!', style: TextStyle(fontSize: 14, color: AppColors.textGrey)),
-        const SizedBox(height: 40),
-        _difficultyButton('😢', '어려웠어요'),
-        const SizedBox(height: 20),
-        _difficultyButton('😌', '적당했어요'),
-        const SizedBox(height: 20),
-        _difficultyButton('😊', '쉬웠어요'),
-        const SizedBox(height: 30),
-        PrimaryButton(
-          label: '완료하기',
-          onPressed: _difficulty == null ? null : () => setState(() => _stage = MissionStage.complete),
-        ),
-      ]);
-
-  Widget _difficultyButton(String emoji, String label) {
-    final selected = _difficulty == label;
-    return InkWell(
-      onTap: () => setState(() => _difficulty = label),
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        height: 51,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primary : Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: selected ? AppColors.primary : AppColors.border),
-        ),
-        child: Row(children: [
-          Text(emoji, style: const TextStyle(fontSize: 16)),
-          const SizedBox(width: 8),
-          Text(label, style: TextStyle(fontSize: 16, color: selected ? Colors.white : Colors.black)),
-        ]),
-      ),
-    );
-  }
-
-  Widget _completeView() => Center(
-        child: SizedBox(
-          width: 393,
-          height: 852,
-          child: AquariumBackground(
-            child: Center(
-              child: SizedBox(
-                width: 220,
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.check_circle_outline, size: 40, color: AppColors.primary),
-                  const SizedBox(height: 10),
-                  Text(
-                    '피드백을 통해 ${widget.userName}님께 더 좋은 미션을 제공해드릴게요',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 16, color: AppColors.primary, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 24),
-                  TextButton(onPressed: () => setState(() => _stage = MissionStage.overview), child: const Text('미션으로 돌아가기')),
-                ]),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const ChaeumLogo(size: 20, showTagline: false),
+              const SizedBox(height: 30),
+              MissionHeader(mission: mission),
+              const SectionTitle('목표'),
+              const SizedBox(height: 10),
+              MissionObjective(
+                objective: mission.objective,
+                highlight: mission.objectiveHighlight,
               ),
-            ),
+              const SizedBox(height: 34),
+              CompletionCriteria(criteria: mission.completionCriteria),
+              if (mission.hints.isNotEmpty) ...[
+                const SizedBox(height: 34),
+                const SectionTitle('Hint!'),
+                const SizedBox(height: 4),
+                const Text(
+                  '미션이 어렵다면 이 글을 확인해주세요',
+                  style: TextStyle(fontSize: 14, color: AppColors.textGrey),
+                ),
+                const SizedBox(height: 12),
+                for (var i = 0; i < mission.hints.length; i += 1)
+                  _HintStep(step: 'STEP ${i + 1}', hint: mission.hints[i]),
+              ],
+              const SizedBox(height: 20),
+              PrimaryButton(label: '시작하기', onPressed: _start),
+              const SizedBox(height: 10),
+              _FooterActions(
+                onSkip: session.skipMission,
+                onRegenerate: session.regenerateMission,
+              ),
+              if (mission.decisionReason.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                _DecisionNote(reason: mission.decisionReason),
+              ],
+            ],
           ),
         ),
-      );
-
-  Widget _conditions() => const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _SectionTitle('완료 조건'),
-        SizedBox(height: 4),
-        Text('아래 3가지를 작성하면 미션이 완료돼요', style: TextStyle(fontSize: 14, color: AppColors.textGrey)),
-        SizedBox(height: 16),
-        _Bullet('프로젝트 아이디어 3개 이상 적기'),
-        _Bullet('각 아이디어에 대해 한 줄 설명 작성하기'),
-        _Bullet('가장 해보고 싶은 아이디어 1개 선택하기'),
-      ]);
-}
-
-class _SectionTitle extends StatelessWidget {
-  final String text;
-  const _SectionTitle(this.text);
-  @override
-  Widget build(BuildContext context) => Text(text, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500));
-}
-
-class _Bullet extends StatelessWidget {
-  final String text;
-  const _Bullet(this.text);
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('•  ', style: TextStyle(fontSize: 16)),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 16, height: 1.4))),
-        ]),
-      );
+      ),
+    );
+  }
 }
 
 class _HintStep extends StatelessWidget {
   final String step;
-  final String text;
-  final String? subtext;
-  const _HintStep(this.step, this.text, this.subtext);
+  final MissionHint hint;
+
+  const _HintStep({required this.step, required this.hint});
+
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(step, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.primary)),
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            step,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppColors.primary,
+            ),
+          ),
           const SizedBox(height: 6),
-          Text(text, style: const TextStyle(fontSize: 16, height: 1.4)),
-          if (subtext != null) Text(subtext!, style: const TextStyle(fontSize: 15, color: AppColors.textGrey)),
-        ]),
+          Text(hint.title, style: const TextStyle(fontSize: 16, height: 1.4)),
+          if (hint.subtext.isNotEmpty)
+            Text(
+              '→ ${hint.subtext}',
+              style: const TextStyle(fontSize: 15, color: AppColors.textGrey),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "미션 건너뛰기 | 미션 다시 생성하기". 둘 다 Rule Engine에 근거를 남깁니다.
+class _FooterActions extends StatelessWidget {
+  final VoidCallback onSkip;
+  final VoidCallback onRegenerate;
+
+  const _FooterActions({required this.onSkip, required this.onRegenerate});
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(fontSize: 13, color: AppColors.textGrey);
+    // 좁은 화면에서도 한 줄을 유지해야 해서 넘칠 때만 줄여 그립니다.
+    return Center(
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InkWell(onTap: onSkip, child: const Text('미션 건너뛰기', style: style)),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 14),
+              child: Text('|', style: style),
+            ),
+            InkWell(onTap: onRegenerate, child: const Text('미션 다시 생성하기', style: style)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 기능 정의서의 "판단 근거". 왜 오늘 이 미션인지 사용자에게 그대로 보여 줍니다.
+class _DecisionNote extends StatelessWidget {
+  final String reason;
+
+  const _DecisionNote({required this.reason});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0x145B6790),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '이 미션을 고른 이유',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary),
+          ),
+          const SizedBox(height: 6),
+          Text(reason, style: const TextStyle(fontSize: 13, height: 1.5, color: AppColors.textSub)),
+        ],
+      ),
+    );
+  }
+}
+
+class _CenteredNotice extends StatelessWidget {
+  final IconData icon;
+  final String message;
+
+  const _CenteredNotice({required this.icon, required this.message});
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 40, color: AppColors.textGrey),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 15, height: 1.5, color: AppColors.textGrey),
+            ),
+          ],
+        ),
       );
 }

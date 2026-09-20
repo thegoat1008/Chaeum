@@ -1,88 +1,103 @@
-import { corsHeaders } from "../_shared/cors.ts";
+// POST { weakness, desiredChange, period }
+//   -> { data: { title, description, durationDays, steps: [...] }, model }
+//
+// 화면 구성 3·4번(목표 구체화 → 계획·권한 승인)에 해당합니다.
+// steps는 단순 설명이 아니라 실제로 예약할 Trigger 계획이라서,
+// mission_triggers에 그대로 꽂을 수 있는 형태(triggerType/time/daysBefore)로 받습니다.
+import { guard, json, text } from "../_shared/http.ts";
+import { generateJson, GeminiError } from "../_shared/gemini.ts";
+import { classifySafety } from "../_shared/agent.ts";
 
-const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+type GoalPlan = {
+  title: string;
+  description: string;
+  durationDays: number;
+  steps: Array<{
+    title: string;
+    description: string;
+    triggerType: "deadline" | "daily" | "weekly";
+    time: string;
+    daysBefore: number;
+  }>;
+};
 
-function response(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
-}
+const RESPONSE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    title: { type: "STRING" },
+    description: { type: "STRING" },
+    durationDays: { type: "INTEGER" },
+    steps: {
+      type: "ARRAY",
+      minItems: 2,
+      maxItems: 2,
+      items: {
+        type: "OBJECT",
+        properties: {
+          title: { type: "STRING" },
+          description: { type: "STRING" },
+          triggerType: { type: "STRING", enum: ["deadline", "daily", "weekly"] },
+          time: { type: "STRING" },
+          daysBefore: { type: "INTEGER" },
+        },
+        required: ["title", "description", "triggerType", "time", "daysBefore"],
+      },
+    },
+  },
+  required: ["title", "description", "durationDays", "steps"],
+};
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (req.method !== "POST") return response({ error: "Method Not Allowed" }, 405);
+function buildPrompt(weakness: string, desiredChange: string, period: string) {
+  return `당신은 개인 성장 서비스 "채움"의 목표·알림 계획 설계자입니다.
 
-  const apiKey = Deno.env.get("GEMINI_API_KEY");
-  if (!apiKey) return response({ error: "GEMINI_API_KEY is not configured" }, 500);
-
-  const body = await req.json().catch(() => null);
-  const weakness = body?.weakness?.toString().trim();
-  const desiredChange = body?.desiredChange?.toString().trim();
-  const period = body?.period?.toString().trim();
-  if (!weakness || !desiredChange || !period) {
-    return response({ error: "weakness, desiredChange and period are required" }, 400);
-  }
-
-  const prompt = `당신은 사용자가 작은 행동으로 목표를 달성하도록 돕는 코치입니다.
 사용자의 단점: ${weakness}
 원하는 변화: ${desiredChange}
 도전 기간: ${period}
 
-한국어로 현실적이고 부담이 적은 맞춤 목표를 만드세요.
-- title: 한 문장의 구체적인 목표
-- description: 목표 진행 방법을 설명하는 1~2문장
-- steps: 바로 실행할 수 있는 2개의 단계
-- 각 단계는 title과 description을 포함
-- 의료 진단이나 위험한 조언은 하지 마세요.`;
+규칙:
+- 사용자가 직접 쓴 표현만 사용하고 성격·질환을 추측하거나 진단하지 않습니다.
+- title: 관찰 가능한 한 문장 목표.
+- description: 진행 방식을 설명하는 1~2문장.
+- durationDays: "${period}"를 일 수로 환산한 정수(예: "1달 동안" -> 30, "2주" -> 14). 판단이 어려우면 30.
+- steps: 이 목표를 위해 예약할 알림 계획 정확히 2개.
+  - STEP 1은 마감·기한 기준 선제 알림(triggerType "deadline", daysBefore는 1 이상).
+  - STEP 2는 매일 반복 알림(triggerType "daily", daysBefore 0).
+  - title은 "마감 일주일 전 시작"처럼 계획을 요약한 8자 이상 15자 이하의 문구.
+  - description은 "마감 일주일 전에 시작하도록 알려드릴게요"처럼 사용자에게 알림을 예고하는 존댓말 한 문장.
+  - time은 24시간 "HH:MM" 형식. 사용자가 시간대를 말하지 않았다면 "18:00".
+- 의료 진단이나 위험한 조언은 하지 않습니다.
+- 모든 문장은 한국어 존댓말입니다.`;
+}
 
-  const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
-  const geminiResponse = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.3,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: "OBJECT",
-            properties: {
-              title: { type: "STRING" },
-              description: { type: "STRING" },
-              steps: {
-                type: "ARRAY",
-                minItems: 2,
-                maxItems: 2,
-                items: {
-                  type: "OBJECT",
-                  properties: {
-                    title: { type: "STRING" },
-                    description: { type: "STRING" },
-                  },
-                  required: ["title", "description"],
-                },
-              },
-            },
-            required: ["title", "description", "steps"],
-          },
-        },
-      }),
-    },
-  );
+Deno.serve(async (req) => {
+  const blocked = guard(req);
+  if (blocked) return blocked;
 
-  if (!geminiResponse.ok) {
-    const detail = await geminiResponse.text();
-    console.error("Gemini request failed", geminiResponse.status, detail);
-    return response({ error: "Gemini request failed" }, 502);
+  const body = await req.json().catch(() => null);
+  const weakness = text(body?.weakness);
+  const desiredChange = text(body?.desiredChange);
+  const period = text(body?.period);
+  if (!weakness || !desiredChange || !period) {
+    return json({ error: "weakness, desiredChange and period are required" }, 400);
   }
 
-  const payload = await geminiResponse.json();
-  const text = payload?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) return response({ error: "Gemini returned an empty response" }, 502);
+  // 안전 분기가 먼저입니다. 위기 신호가 있으면 Gemini를 호출하지 않고 안내로 끝냅니다.
+  const safety = classifySafety(`${weakness} ${desiredChange} ${period}`);
+  if (!safety.allowMission) {
+    return json({ error: safety.message, safety }, 422);
+  }
 
   try {
-    return response({ data: JSON.parse(text), model });
-  } catch {
-    return response({ error: "Gemini returned invalid JSON" }, 502);
+    const { data, model } = await generateJson<GoalPlan>(
+      buildPrompt(weakness, desiredChange, period),
+      RESPONSE_SCHEMA,
+    );
+    const durationDays = Number.isInteger(data.durationDays) && data.durationDays > 0
+      ? Math.min(365, data.durationDays)
+      : 30;
+    return json({ data: { ...data, durationDays }, safety, model });
+  } catch (error) {
+    if (error instanceof GeminiError) return json({ error: error.message }, error.status);
+    throw error;
   }
 });

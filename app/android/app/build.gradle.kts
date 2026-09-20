@@ -36,6 +36,16 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    packaging {
+        jniLibs {
+            // 이 앱에는 네이티브 코드가 없습니다. .so는 Flutter 엔진이 넣어 준 것뿐인데
+            // AGP의 심볼 스트립 단계가 NDK를 요구해서, NDK가 없으면 빌드가 750MB짜리
+            // 다운로드에 묶입니다. 스트립을 건너뛰면 그 의존이 사라집니다.
+            // (디버그 빌드에서는 어차피 스트립할 이유가 없습니다.)
+            keepDebugSymbols += "**/*.so"
+        }
+    }
 }
 
 kotlin {

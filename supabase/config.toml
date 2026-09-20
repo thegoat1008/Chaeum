@@ -34,5 +34,11 @@ verify_jwt = true
 [functions.generate-mission]
 verify_jwt = true
 
+[functions.generate-daily-mission]
+verify_jwt = true
+
+[functions.evaluate-mission]
+verify_jwt = true
+
 [functions.dispatch-scheduled-triggers]
 verify_jwt = false

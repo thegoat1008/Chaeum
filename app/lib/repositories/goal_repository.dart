@@ -1,88 +1,51 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import '../models/goal.dart';
+import 'api_client.dart';
 
+/// 목표 구체화(화면 3) + 계획·권한 승인(화면 4)에 필요한 데이터를 만듭니다.
 abstract class GoalRepository {
-  Future<GeneratedGoal> generateGoal(GoalDraft draft);
+  Future<GoalPlan> generateGoal(GoalDraft draft);
 
+  /// 빌드 타임에 Supabase 설정이 있으면 실제 Gemini 호출, 없으면 Mock.
   factory GoalRepository.configured() {
-    const url = String.fromEnvironment('SUPABASE_URL');
-    const anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
-    if (url.isNotEmpty && anonKey.isNotEmpty) {
-      return GeminiGoalRepository(supabaseUrl: url, anonKey: anonKey);
-    }
-    return MockGoalRepository();
+    final client = ApiClient.fromEnvironment();
+    return client == null ? MockGoalRepository() : GeminiGoalRepository(client);
   }
 }
 
 class GeminiGoalRepository implements GoalRepository {
-  final String supabaseUrl;
-  final String anonKey;
-  final http.Client _client;
+  final ApiClient _api;
 
-  GeminiGoalRepository({required this.supabaseUrl, required this.anonKey, http.Client? client})
-      : _client = client ?? http.Client();
+  GeminiGoalRepository(this._api);
 
   @override
-  Future<GeneratedGoal> generateGoal(GoalDraft draft) async {
-    final response = await _client.post(
-      Uri.parse('${supabaseUrl.replaceFirst(RegExp(r'/+$'), '')}/functions/v1/generate-mission'),
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': anonKey,
-        'Authorization': 'Bearer $anonKey',
-      },
-      body: jsonEncode({
-        'weakness': draft.weakness,
-        'desiredChange': draft.desiredChange,
-        'period': draft.period,
-      }),
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw GoalGenerationException('맞춤 목표 생성에 실패했어요. (${response.statusCode})');
-    }
-    final payload = jsonDecode(response.body) as Map<String, dynamic>;
-    final data = payload['data'] as Map<String, dynamic>?;
-    if (data == null) throw const GoalGenerationException('Gemini 응답 형식이 올바르지 않아요.');
-    final stepsJson = data['steps'] as List<dynamic>? ?? const [];
-    final steps = stepsJson.map((item) {
-      final step = item as Map<String, dynamic>;
-      return GoalStep(title: step['title']?.toString() ?? '', description: step['description']?.toString() ?? '');
-    }).where((step) => step.title.isNotEmpty).toList();
-    if (steps.length < 2) {
-      steps
-        ..clear()
-        ..addAll(const [
-          GoalStep(title: '작게 시작하기', description: '부담 없는 첫 행동 하나를 정해요.'),
-          GoalStep(title: '매일 기록하기', description: '완료 여부와 느낀 점을 짧게 남겨요.'),
-        ]);
-    }
-    return GeneratedGoal(
-      title: data['title']?.toString() ?? draft.desiredChange,
-      description: data['description']?.toString() ?? '',
-      steps: steps,
-    );
+  Future<GoalPlan> generateGoal(GoalDraft draft) async {
+    final payload = await _api.invoke('generate-mission', draft.toJson());
+    final data = payload['data'];
+    if (data is! Map<String, dynamic>) throw const ApiException('Gemini 응답 형식이 올바르지 않아요.');
+    return GoalPlan.fromJson(data);
   }
 }
 
+/// 백엔드 없이 UI와 전체 흐름을 확인하기 위한 구현.
 class MockGoalRepository implements GoalRepository {
   @override
-  Future<GeneratedGoal> generateGoal(GoalDraft draft) async {
-    await Future.delayed(const Duration(seconds: 2));
-    return GeneratedGoal(
+  Future<GoalPlan> generateGoal(GoalDraft draft) async {
+    await Future<void>.delayed(const Duration(seconds: 2));
+    return GoalPlan(
       title: draft.desiredChange,
-      description: '${draft.period} 동안 “${draft.weakness}”을 바꾸는 연습을 해요.',
-      steps: const [
-        GoalStep(title: '작게 시작하기', description: '부담 없는 첫 행동 하나를 정해요.'),
-        GoalStep(title: '매일 기록하기', description: '완료 여부와 느낀 점을 짧게 남겨요.'),
-      ],
+      description: '${draft.period} 동안 "${draft.weakness}"을 바꾸는 연습을 해요.',
+      durationDays: _parseDays(draft.period),
+      steps: GoalStep.defaults,
     );
   }
-}
 
-class GoalGenerationException implements Exception {
-  final String message;
-  const GoalGenerationException(this.message);
-  @override
-  String toString() => message;
+  /// "1달 동안", "2주", "30일" 같은 표현에서 일 수를 추정합니다.
+  static int _parseDays(String period) {
+    final number = int.tryParse(RegExp(r'\d+').firstMatch(period)?.group(0) ?? '') ?? 1;
+    if (period.contains('달') || period.contains('개월')) return number * 30;
+    if (period.contains('주')) return number * 7;
+    if (period.contains('년')) return number * 365;
+    if (period.contains('일')) return number;
+    return 30;
+  }
 }
